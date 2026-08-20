@@ -1,6 +1,7 @@
 import csv
 import random
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -543,6 +544,22 @@ def initialize_log():
 
             "learning_rate",
 
+            "train_time_seconds",
+
+            "validation_time_seconds",
+
+            "epoch_time_seconds",
+
+            "peak_gpu_allocated_gb",
+
+            "peak_gpu_reserved_gb",
+
+            "peak_vram_percent",
+
+            "train_samples_per_second",
+
+            "train_batches",
+
         ])
 
 
@@ -555,6 +572,14 @@ def log_epoch(
     val_accuracy,
     val_macro_f1,
     learning_rate,
+    train_time,
+    val_time,
+    epoch_time,
+    peak_memory_allocated,
+    peak_memory_reserved,
+    peak_memory_percent,
+    train_samples_per_second,
+    train_batches,
 ):
 
     with open(
@@ -585,6 +610,14 @@ def log_epoch(
 
             learning_rate,
 
+            train_time,
+            val_time,
+            epoch_time,
+            peak_memory_allocated,
+            peak_memory_reserved,
+            peak_memory_percent,
+            train_samples_per_second,
+            train_batches,
         ])
 
 
@@ -738,6 +771,11 @@ def main():
         NUM_EPOCHS + 1
     ):
 
+        epoch_start_time = time.perf_counter()
+
+        if device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device)
+
         print()
         print("-" * 70)
 
@@ -750,6 +788,7 @@ def main():
         # --------------------------------------------------------------
         # Train
         # --------------------------------------------------------------
+        train_start_time = time.perf_counter()
 
         (
             train_loss,
@@ -764,11 +803,15 @@ def main():
             epoch,
         )
 
+        train_time = time.perf_counter() - train_start_time
+
         # --------------------------------------------------------------
         # Validation
         # --------------------------------------------------------------
 
         if VALIDATE_EVERY_EPOCH:
+
+            val_start_time = time.perf_counter()
 
             (
                 val_loss,
@@ -781,6 +824,8 @@ def main():
                 device,
             )
 
+            val_time = time.perf_counter() - val_start_time
+
         else:
 
             val_loss = float("nan")
@@ -788,6 +833,45 @@ def main():
             val_accuracy = float("nan")
 
             val_macro_f1 = float("nan")
+
+            val_time = 0.0
+
+        epoch_time = time.perf_counter() - epoch_start_time
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+
+            peak_memory_allocated = (
+                torch.cuda.max_memory_allocated(device)
+                / 1024**3
+            )
+
+            peak_memory_reserved = (
+                torch.cuda.max_memory_reserved(device)
+                / 1024**3
+            )
+
+            total_gpu_memory = (
+                torch.cuda.get_device_properties(device).total_memory
+                / 1024**3
+            )
+
+            peak_memory_percent = (
+                peak_memory_allocated
+                / total_gpu_memory
+                * 100
+            )
+
+        else:
+            peak_memory_allocated = 0.0
+            peak_memory_reserved = 0.0
+            peak_memory_percent = 0.0
+
+        train_samples_per_second = (
+            len(train_dataset)
+            / train_time
+        )
+
+
 
         # --------------------------------------------------------------
         # Current learning rate
@@ -840,6 +924,46 @@ def main():
             f"Learning Rate       : "
             f"{current_lr:.8f}"
         )
+
+        print(
+            f"Training Time       : "
+            f"{train_time / 60:.2f} min"
+            )
+
+        print(
+            f"Validation Time     : "
+            f"{val_time / 60:.2f} min"
+            )
+
+        print(
+            f"Total Epoch Time    : "
+            f"{epoch_time / 60:.2f} min"
+            )
+
+        print(
+            f"Peak GPU Allocated  : "
+            f"{peak_memory_allocated:.2f} GB"
+            )
+
+        print(
+            f"Peak GPU Reserved   : "
+            f"{peak_memory_reserved:.2f} GB"
+            )
+
+        print(
+            f"Peak VRAM Usage     : "
+            f"{peak_memory_percent:.2f}%"
+            )
+
+        print(
+            f"Train Samples/sec   : "
+            f"{train_samples_per_second:.2f}"
+            )
+
+        print(
+            f"Train Batches       : "
+            f"{len(train_loader)}"
+            )
 
         # --------------------------------------------------------------
         # Best model / early stopping
@@ -922,6 +1046,14 @@ def main():
             val_accuracy,
             val_macro_f1,
             current_lr,
+            train_time,
+            val_time,
+            epoch_time,
+            peak_memory_allocated,
+            peak_memory_reserved,
+            peak_memory_percent,
+            train_samples_per_second,
+            len(train_loader),
         )
 
         # --------------------------------------------------------------
