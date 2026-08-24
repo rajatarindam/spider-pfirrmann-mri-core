@@ -529,6 +529,12 @@ def load_latest_checkpoint(
         ]
     )
 
+    # Reset optimizer learning rate to the current configuration.
+    # The checkpoint was created with the previous LR (5e-5).
+    # This experiment resumes with a constant LR of 1e-4.
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = LEARNING_RATE
+
     if (
         scheduler is not None
         and "scheduler_state_dict" in checkpoint

@@ -35,7 +35,7 @@ CLASS_NAMES = [
 
 BATCH_SIZE = 6
 
-NUM_EPOCHS = 42
+NUM_EPOCHS = 38
 
 NUM_WORKERS = 4
 
@@ -104,7 +104,7 @@ CLASS_WEIGHT_METHOD = "balanced"
 #
 # =============================================================================
 
-USE_LR_SCHEDULER = True
+USE_LR_SCHEDULER = False
 
 SCHEDULER_MODE = "max"
 
