@@ -27,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from configs import paths
 
-from training.training_config_new_final import (
+from configs.training_config_new_final import (
     BATCH_SIZE,
     NUM_WORKERS,
     PIN_MEMORY,
