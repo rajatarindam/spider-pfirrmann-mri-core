@@ -554,10 +554,7 @@ def load_latest_checkpoint(
         float("-inf"),
     )
 
-    early_stopping_counter = checkpoint.get(
-        "early_stopping_counter",
-        0,
-    )
+    early_stopping_counter = 0
 
     print(
         f"Checkpoint epoch     : "
