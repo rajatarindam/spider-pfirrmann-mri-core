@@ -69,7 +69,7 @@ UNPACKED_METADATA_CSV = (
 #     data/new_final/final_data/
 #
 # Ground truth:
-#     data/new_final/final_data/dataset_updated_pfirrmann_patient_stratified.csv
+#     data/new_final/final_data/dataset_updated_pfirrmann.csv
 #
 # =============================================================================
 
@@ -86,7 +86,16 @@ NEW_FINAL_MASKS_DIR = (
 )
 
 NEW_FINAL_DATASET_CSV = (
-    NEW_FINAL_DATA_DIR / "dataset_updated_pfirrmann_patient_stratified.csv"
+    NEW_FINAL_DATA_DIR / "dataset_updated_pfirrmann.csv"
+)
+
+NEW_FINAL_PATIENT_STRATIFIED_DATA_DIR = (
+    DATA_DIR / "new_final" / "final_data"
+)
+
+NEW_FINAL_PATIENT_STRATIFIED_DATASET_CSV = (
+    NEW_FINAL_PATIENT_STRATIFIED_DATA_DIR
+    / "dataset_updated_pfirrmann_patient_stratified.csv"
 )
 
 
@@ -133,6 +142,18 @@ NEW_FINAL_LOGS_DIR = (
 
 NEW_FINAL_CHECKPOINT_DIR = (
     NEW_FINAL_OUTPUTS_DIR / "checkpoints"
+)
+
+NEW_FINAL_PATIENT_STRATIFIED_OUTPUTS_DIR = (
+    OUTPUTS_DIR / "new_final_patient_stratified"
+)
+
+NEW_FINAL_PATIENT_STRATIFIED_LOGS_DIR = (
+    NEW_FINAL_PATIENT_STRATIFIED_OUTPUTS_DIR / "logs"
+)
+
+NEW_FINAL_PATIENT_STRATIFIED_CHECKPOINT_DIR = (
+    NEW_FINAL_PATIENT_STRATIFIED_OUTPUTS_DIR / "checkpoints"
 )
 
 
