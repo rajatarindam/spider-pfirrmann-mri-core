@@ -6,7 +6,7 @@
 # training_config.py so the first training experiment remains untouched.
 #
 # New experiment:
-#   Dataset  : data/new_final/final_data/dataset_updated_pfirrmann.csv
+#   Dataset  : data/new_final/final_data/dataset_updated_pfirrmann_patient_stratified.csv
 #   Samples  : 7003
 #   Patients : 204
 #
@@ -33,9 +33,9 @@ CLASS_NAMES = [
 # TRAINING
 # =============================================================================
 
-BATCH_SIZE = 6
+BATCH_SIZE = 6  
 
-NUM_EPOCHS = 38
+NUM_EPOCHS = 50
 
 NUM_WORKERS = 4
 
@@ -130,7 +130,7 @@ SCHEDULER_MIN_LR = 1e-6
 
 USE_EARLY_STOPPING = True
 
-EARLY_STOPPING_PATIENCE = 10
+EARLY_STOPPING_PATIENCE = 15
 
 EARLY_STOPPING_MIN_DELTA = 0.0
 

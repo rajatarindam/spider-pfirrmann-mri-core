@@ -69,7 +69,7 @@ UNPACKED_METADATA_CSV = (
 #     data/new_final/final_data/
 #
 # Ground truth:
-#     data/new_final/final_data/dataset_updated_pfirrmann.csv
+#     data/new_final/final_data/dataset_updated_pfirrmann_patient_stratified.csv
 #
 # =============================================================================
 
@@ -86,7 +86,7 @@ NEW_FINAL_MASKS_DIR = (
 )
 
 NEW_FINAL_DATASET_CSV = (
-    NEW_FINAL_DATA_DIR / "dataset_updated_pfirrmann.csv"
+    NEW_FINAL_DATA_DIR / "dataset_updated_pfirrmann_patient_stratified.csv"
 )
 
 
