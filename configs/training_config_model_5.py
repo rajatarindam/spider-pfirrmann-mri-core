@@ -1,9 +1,6 @@
 # =============================================================================
-# TRAINING CONFIGURATION - MODEL 5 MULTI-VIEW EXPERIMENT
+# TRAINING CONFIGURATION - MODEL 5 (PHASE 1 + PHASE 2 COMBINED)
 # =============================================================================
-#
-# This file is intentionally isolated from all previous training configurations
-# so that Model 5 cannot overwrite or conflict with Models 1-4 outputs.
 #
 # Experiment:
 #   Dataset  : data/new_final/final_data/dataset_multi_view_v2.csv
@@ -11,13 +8,18 @@
 #   Views    : 5 offsets per disc  (-2, -1, 0, +1, +2)
 #   Task     : 5-class Pfirrmann grade classification (disc-level)
 #
-# Key changes vs Model 4 training config:
-#   - Single optimizer group at constant lr=1e-4 (no differential LR)
-#   - No LR scheduler (Cosine Annealing caused LR entrapment in Model 4)
-#   - Label smoothing = 0.1 (prevents logit saturation & overconfidence)
-#   - Gradient clipping max_norm = 1.0 (stabilises B=1 single-disc batches)
-#   - Training augmentation enabled (random HFlip + brightness + noise)
-#   - Primary checkpoint metric = val_macro_f1 (not val_accuracy)
+# Key Architectural & Training Enhancements:
+#   Phase 1:
+#     - SAM Neck restored & unfrozen (lr=1e-5) for local spatial patch interactions
+#     - SpatialAttentionPooling (lr=1e-4) replaces uniform mean pooling
+#     - Two-group AdamW differential optimizer (neck vs heads)
+#     - CosineAnnealingWarmRestarts scheduler (T_0=10, T_mult=2, eta_min=1e-5 / 1e-6)
+#     - Gradient clipping tightened to max_norm=0.5
+#     - Coherent 3D multi-slice geometric augmentation + independent radiometric jitter
+#   Phase 2:
+#     - SoftOrdinalFocalLoss (Gaussian-smoothed targets, sigma=0.70)
+#     - Focal modulating factor (gamma=2.0) focusing on hard borderline cases
+#     - Auxiliary mid-sagittal center-slice supervision (lambda=0.30)
 #
 # =============================================================================
 
@@ -43,7 +45,7 @@ NUM_VIEWS = len(OFFSETS)  # 5
 
 
 # =============================================================================
-# GRADE ↔ LABEL MAPPINGS
+# GRADE <-> LABEL MAPPINGS
 # =============================================================================
 
 GRADE_TO_LABEL = {
@@ -58,11 +60,11 @@ LABEL_TO_GRADE = {v: k for k, v in GRADE_TO_LABEL.items()}
 
 
 # =============================================================================
-# TRAINING
+# TRAINING HARDWARE & BATCHING
 # =============================================================================
 
 # One disc group (5 views) per iteration — dictated by GPU VRAM constraints
-BATCH_SIZE = 1
+BATCH_SIZE = 4
 
 NUM_EPOCHS = 50
 
@@ -76,115 +78,109 @@ IMAGE_SIZE = (1024, 1024)
 
 
 # =============================================================================
-# OPTIMIZER
+# OPTIMIZER (Differential Parameter Groups)
 # =============================================================================
 #
-# Single parameter group at constant lr=1e-4.
-#
-# In Model 4 two groups were used:
-#     neck params  → lr=1e-5  (protecting pretrained SAM conv weights)
-#     head params  → lr=1e-4
-#
-# In Model 5 the SAM neck is frozen and unused in forward(). The only
-# trainable parameters are freshly initialised (LinearProjection,
-# ViewPositionalEmbedding, ViewAttentionAggregator, Classifier).
-# A single learning rate is therefore appropriate.
+# Two parameter groups:
+#   Group 0 (Pretrained SAM Neck) : lr=1e-5, weight_decay=1e-4
+#   Group 1 (Newly Initialised)   : lr=1e-4, weight_decay=1e-4
 #
 # =============================================================================
 
-LEARNING_RATE = 1e-4
-
+LEARNING_RATE_NECK = 1e-5
+LEARNING_RATE_HEAD = 1e-4
 WEIGHT_DECAY = 1e-4
 
 
 # =============================================================================
-# LR SCHEDULER
+# LR SCHEDULER (CosineAnnealingWarmRestarts)
 # =============================================================================
 #
-# No scheduler. Cosine Annealing in Model 4 decayed lr to ~3e-6 by epoch 46,
-# causing LR entrapment and deep memorisation of training images.
-# A flat constant lr=1e-4 is maintained for all 50 epochs.
-#
-# =============================================================================
-
-USE_LR_SCHEDULER = False
-
-
-# =============================================================================
-# LOSS
-# =============================================================================
-#
-# CrossEntropyLoss with:
-#   - class_weights : computed from training split counts (balanced formula)
-#   - label_smoothing = 0.1 : softens hard targets to prevent logit saturation
-#       Hard target  : [0, 0, 1, 0, 0]
-#       Smooth target: [0.02, 0.02, 0.92, 0.02, 0.02]
-#     This directly addresses Model 4's overconfidence pathology where wrong
-#     Grade 4 predictions reached 88.8% confidence.
+# Periodic warm restarts allow escaping local saddle points.
+# Cycle 1: epochs 1–10 (T_0=10)
+# Cycle 2: epochs 11–30 (T_mult=2 -> 20 epochs)
+# Cycle 3: epochs 31–70
 #
 # =============================================================================
 
+USE_LR_SCHEDULER = True
+SCHED_T_0 = 10
+SCHED_T_MULT = 2
+SCHED_ETA_MIN_HEAD = 1e-5
+SCHED_ETA_MIN_NECK = 1e-6
+
+
+# =============================================================================
+# LOSS (SoftOrdinalFocalLoss + Auxiliary Center Supervision)
+# =============================================================================
+#
+# Replaces nominal CrossEntropy with an ordinal-aware objective:
+#   - ORDINAL_SIGMA = 0.70 : Gaussian target distribution centered on ground-truth
+#   - FOCAL_GAMMA   = 2.0  : Down-weights easy confident examples
+#   - AUX_CENTER_LOSS_WEIGHT = 0.30 : Auxiliary loss on mid-sagittal center slice
+#   - USE_CLASS_WEIGHTS = True : Inverse frequency weighting from train split
+#
+# =============================================================================
+
+LOSS_TYPE = "ordinal_focal"
+ORDINAL_SIGMA = 0.70
+FOCAL_GAMMA = 2.0
+USE_AUX_CENTER_LOSS = True
+AUX_CENTER_LOSS_WEIGHT = 0.30
 USE_CLASS_WEIGHTS = True
-
 CLASS_WEIGHT_METHOD = "balanced"  # N / (C * n_c)
-
-LABEL_SMOOTHING = 0.1
 
 
 # =============================================================================
 # GRADIENT CLIPPING
 # =============================================================================
-#
-# With BATCH_SIZE=1, a single unusual disc can produce a large gradient spike.
-# Clipping the global gradient norm prevents any one sample from producing a
-# destabilising weight update.
-#
-# =============================================================================
 
-GRAD_CLIP_MAX_NORM = 1.0
+GRAD_CLIP_MAX_NORM = 0.5
 
 
 # =============================================================================
-# AUGMENTATION (training mode only)
+# AUGMENTATION (Coherent Multi-View + Radiometric Jitter)
 # =============================================================================
 #
-# Applied per-slice, only during training (never during validation or test).
+# Coherent across all 5 slices:
+#   - Random horizontal flip (p=0.5)
+#   - Random rotation (-10 deg to +10 deg, p=0.7)
+#   - Random affine scaling (0.92 to 1.08, p=0.5)
 #
-# Allowed:
-#   - Random horizontal flip (p=0.5)  – spinal anatomy is left-right symmetric
-#   - Brightness jitter ±10%         – accounts for scanner intensity variation
-#   - Gaussian noise (σ=0.01)        – mild noise robustness
+# Independent per slice:
+#   - Brightness jitter (+-20%)
+#   - Contrast jitter (0.85 to 1.15, p=0.7)
+#   - Gaussian noise (sigma=0.02)
+#   - Random erasing / cutout (2% to 8% area, p=0.20)
 #
-# NOT used:
-#   - Vertical flip  (superior/inferior anatomy is clinically meaningful)
-#   - Rotation       (spinal orientation is fixed in the imaging plane)
-#   - Strong colour  (images are grayscale MRI — colour is irrelevant)
+# Strict clinical prohibitions:
+#   - NO vertical flip (inverts cranial/caudal anatomy)
+#   - NO large rotations (> 15 deg)
+#   - NO RGB color jitter
 #
 # =============================================================================
 
 USE_AUGMENTATION = True
 
 AUG_HFLIP_PROB       = 0.5
-AUG_BRIGHTNESS_DELTA = 0.10   # uniform sample from [-0.10, +0.10]
-AUG_NOISE_STD        = 0.01   # Gaussian noise standard deviation
+AUG_ROTATION_DEG     = 10.0
+AUG_ROTATION_PROB    = 0.7
+AUG_SCALE_MIN        = 0.92
+AUG_SCALE_MAX        = 1.08
+AUG_SCALE_PROB       = 0.5
+
+AUG_BRIGHTNESS_DELTA = 0.20
+AUG_CONTRAST_RANGE   = (0.85, 1.15)
+AUG_CONTRAST_PROB    = 0.7
+AUG_NOISE_STD        = 0.02
+AUG_ERASING_PROB     = 0.20
+AUG_ERASING_SCALE    = (0.02, 0.08)
 
 
 # =============================================================================
 # CHECKPOINTING
 # =============================================================================
-#
-# Primary metric for best-model selection: val_macro_f1
-#   (more robust than val_accuracy for the imbalanced 5-class grading task)
-#
-# Files saved per epoch:
-#   1. training_log.csv          – appended after every epoch
-#   2. best_model.pt             – updated when val_macro_f1 improves
-#   3. latest_checkpoint.pt      – always overwritten (enables --resume)
-#   4. checkpoint_epoch_NNN.pt   – per-epoch snapshot (full resume support)
-#
-# =============================================================================
 
 PRIMARY_METRIC = "val_macro_f1"
-
 SAVE_BEST_CHECKPOINT   = True
 SAVE_LATEST_CHECKPOINT = True
