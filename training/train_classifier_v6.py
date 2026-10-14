@@ -558,23 +558,23 @@ def main() -> None:
     start_epoch  = 1
     best_metrics = {"val_accuracy": 0.0, "val_macro_f1": 0.0}
 
-    # ── Resume ─────────────────────────────────────────────────────────────────
+    # ── Automatic Resume ───────────────────────────────────────────────────────
     if args.resume_checkpoint:
         ckpt_path = Path(args.resume_checkpoint)
         if not ckpt_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
         start_epoch, best_metrics = load_checkpoint(ckpt_path, model, optimizer)
-    elif args.resume:
-        if LATEST_CKPT_PATH.exists():
-            start_epoch, best_metrics = load_checkpoint(LATEST_CKPT_PATH, model, optimizer)
-        else:
-            print(f"No checkpoint at {LATEST_CKPT_PATH}. Starting from epoch 1.")
+    elif LATEST_CKPT_PATH.exists():
+        print(f"\n[AUTO-RESUME] Found existing checkpoint: {LATEST_CKPT_PATH}")
+        start_epoch, best_metrics = load_checkpoint(LATEST_CKPT_PATH, model, optimizer)
+    else:
+        print(f"\n[FRESH RUN] No previous checkpoint found. Starting fresh from epoch 1.")
 
     # ── CSV log initialisation ─────────────────────────────────────────────────
     MODEL_5_LOGS_DIR.mkdir(parents=True, exist_ok=True)
     log_exists = TRAINING_LOG_PATH.exists()
 
-    if not log_exists or (start_epoch == 1 and not args.resume and not args.resume_checkpoint):
+    if not log_exists or start_epoch == 1:
         with open(TRAINING_LOG_PATH, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([
