@@ -172,3 +172,28 @@ VISUALIZATION_DIR = PROJECT_ROOT / "visualization"
 EVALUATION_DIR = PROJECT_ROOT / "evaluation"
 
 UTILITIES_DIR = PROJECT_ROOT / "utilities"
+
+# =============================================================================
+# MODEL 5 - MULTI-VIEW PFIRRMANN EXPERIMENT
+# =============================================================================
+#
+# Dataset CSV:
+#     data/new_final/final_data/dataset_multi_view_v2.csv
+#
+# Uses the same images directory as all previous experiments:
+#     data/new_final/final_data/images/
+#
+# Outputs are isolated under outputs/model_5/ so that model_4 outputs
+# remain untouched.
+#
+# =============================================================================
+
+MODEL_5_DATASET_CSV = (
+    NEW_FINAL_DATA_DIR / "dataset_multi_view_v2.csv"
+)
+
+MODEL_5_OUTPUTS_DIR = OUTPUTS_DIR / "model_5"
+
+MODEL_5_CHECKPOINT_DIR = MODEL_5_OUTPUTS_DIR / "checkpoints"
+
+MODEL_5_LOGS_DIR = MODEL_5_OUTPUTS_DIR / "logs"
