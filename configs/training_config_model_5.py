@@ -89,7 +89,7 @@ IMAGE_SIZE = (1024, 1024)
 
 LEARNING_RATE_NECK = 1e-5
 LEARNING_RATE_HEAD = 1e-4
-WEIGHT_DECAY = 1e-4
+WEIGHT_DECAY = 1e-3  # Regularize SAM neck against overfitting on 980 discs
 
 
 # =============================================================================
@@ -97,14 +97,13 @@ WEIGHT_DECAY = 1e-4
 # =============================================================================
 #
 # Periodic warm restarts allow escaping local saddle points.
-# Cycle 1: epochs 1–10 (T_0=10)
-# Cycle 2: epochs 11–30 (T_mult=2 -> 20 epochs)
-# Cycle 3: epochs 31–70
+# Cycle 1: epochs 1–15 (T_0=15) - smooth convergence without early spike
+# Cycle 2: epochs 16–45 (T_mult=2 -> 30 epochs)
 #
 # =============================================================================
 
 USE_LR_SCHEDULER = True
-SCHED_T_0 = 10
+SCHED_T_0 = 15
 SCHED_T_MULT = 2
 SCHED_ETA_MIN_HEAD = 1e-5
 SCHED_ETA_MIN_NECK = 1e-6
@@ -118,7 +117,8 @@ SCHED_ETA_MIN_NECK = 1e-6
 #   - ORDINAL_SIGMA = 0.70 : Gaussian target distribution centered on ground-truth
 #   - FOCAL_GAMMA   = 2.0  : Down-weights easy confident examples
 #   - AUX_CENTER_LOSS_WEIGHT = 0.30 : Auxiliary loss on mid-sagittal center slice
-#   - USE_CLASS_WEIGHTS = True : Inverse frequency weighting from train split
+#   - USE_CLASS_WEIGHTS = True : Sample-level inverse frequency weighting
+#   - CLASS_WEIGHT_METHOD = "smoothed" : Square-root smoothed inverse frequency
 #
 # =============================================================================
 
@@ -128,7 +128,7 @@ FOCAL_GAMMA = 2.0
 USE_AUX_CENTER_LOSS = True
 AUX_CENTER_LOSS_WEIGHT = 0.30
 USE_CLASS_WEIGHTS = True
-CLASS_WEIGHT_METHOD = "balanced"  # N / (C * n_c)
+CLASS_WEIGHT_METHOD = "smoothed"  # sqrt(N / (C * n_c)) normalized to mean 1.0
 
 
 # =============================================================================
@@ -169,11 +169,11 @@ AUG_SCALE_MIN        = 0.92
 AUG_SCALE_MAX        = 1.08
 AUG_SCALE_PROB       = 0.5
 
-AUG_BRIGHTNESS_DELTA = 0.20
-AUG_CONTRAST_RANGE   = (0.85, 1.15)
-AUG_CONTRAST_PROB    = 0.7
-AUG_NOISE_STD        = 0.02
-AUG_ERASING_PROB     = 0.20
+AUG_BRIGHTNESS_DELTA = 0.08   # Clinically realistic scanner variation (+-8%)
+AUG_CONTRAST_RANGE   = (0.90, 1.10)
+AUG_CONTRAST_PROB    = 0.5
+AUG_NOISE_STD        = 0.015
+AUG_ERASING_PROB     = 0.0    # Disabled: prevents blanking out central nucleus pulposus
 AUG_ERASING_SCALE    = (0.02, 0.08)
 
 
@@ -184,3 +184,4 @@ AUG_ERASING_SCALE    = (0.02, 0.08)
 PRIMARY_METRIC = "val_macro_f1"
 SAVE_BEST_CHECKPOINT   = True
 SAVE_LATEST_CHECKPOINT = True
+CHECKPOINT_PERIOD      = 10   # Save snapshot every 10 epochs (avoids 19 GB disk bloat)

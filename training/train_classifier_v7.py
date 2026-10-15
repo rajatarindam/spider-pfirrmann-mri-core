@@ -87,14 +87,14 @@ try:
         BATCH_SIZE, NUM_EPOCHS, NUM_WORKERS, PIN_MEMORY, RANDOM_SEED, IMAGE_SIZE,
         LEARNING_RATE_NECK, LEARNING_RATE_HEAD, WEIGHT_DECAY,
         USE_LR_SCHEDULER, SCHED_T_0, SCHED_T_MULT, SCHED_ETA_MIN_HEAD, SCHED_ETA_MIN_NECK,
-        USE_CLASS_WEIGHTS, LOSS_TYPE, ORDINAL_SIGMA, FOCAL_GAMMA,
+        USE_CLASS_WEIGHTS, CLASS_WEIGHT_METHOD, LOSS_TYPE, ORDINAL_SIGMA, FOCAL_GAMMA,
         USE_AUX_CENTER_LOSS, AUX_CENTER_LOSS_WEIGHT,
         GRAD_CLIP_MAX_NORM,
         USE_AUGMENTATION, AUG_HFLIP_PROB, AUG_ROTATION_DEG, AUG_ROTATION_PROB,
         AUG_SCALE_MIN, AUG_SCALE_MAX, AUG_SCALE_PROB,
         AUG_BRIGHTNESS_DELTA, AUG_CONTRAST_RANGE, AUG_CONTRAST_PROB,
         AUG_NOISE_STD, AUG_ERASING_PROB, AUG_ERASING_SCALE,
-        PRIMARY_METRIC, SAVE_BEST_CHECKPOINT, SAVE_LATEST_CHECKPOINT,
+        PRIMARY_METRIC, SAVE_BEST_CHECKPOINT, SAVE_LATEST_CHECKPOINT, CHECKPOINT_PERIOD,
     )
 except ImportError:
     from training_config_model_5 import *
@@ -215,16 +215,22 @@ class PfirrmannMultiViewDataset(Dataset):
 
     def _apply_coherent_augmentations(self, slice_imgs: list[Image.Image]) -> list[np.ndarray]:
         """
-        Applies coherent geometric transforms across all 5 slices of a disc group,
-        followed by independent per-slice radiometric jitter.
+        Applies coherent geometric and radiometric transforms across all 5 slices
+        of a disc group to preserve cross-slice intensity relationships.
         """
-        # 1. Coherent Geometric Decisions
+        # 1. Coherent Geometric Decisions across the disc group
         do_hflip = random.random() < AUG_HFLIP_PROB
         do_rot   = random.random() < AUG_ROTATION_PROB
         rot_deg  = random.uniform(-AUG_ROTATION_DEG, AUG_ROTATION_DEG) if do_rot else 0.0
 
         do_scale = random.random() < AUG_SCALE_PROB
         scale    = random.uniform(AUG_SCALE_MIN, AUG_SCALE_MAX) if do_scale else 1.0
+
+        # 2. Coherent Radiometric Decisions across the disc group
+        # (Scanner brightness & contrast shifts apply to the entire acquired disc volume)
+        delta_b = random.uniform(-AUG_BRIGHTNESS_DELTA, AUG_BRIGHTNESS_DELTA)
+        do_contrast = random.random() < AUG_CONTRAST_PROB
+        c_factor = random.uniform(*AUG_CONTRAST_RANGE) if do_contrast else 1.0
 
         transformed_slices = []
 
@@ -244,23 +250,20 @@ class PfirrmannMultiViewDataset(Dataset):
 
             arr = np.asarray(img, dtype=np.float32) / 255.0  # [H, W] in [0, 1]
 
-            # B. Radiometric Jitter (Independent per slice)
-            # Brightness jitter
-            delta_b = random.uniform(-AUG_BRIGHTNESS_DELTA, AUG_BRIGHTNESS_DELTA)
+            # B. Radiometric Jitter (Coherent gain across volume)
             arr = np.clip(arr + delta_b, 0.0, 1.0)
 
-            # Contrast jitter
-            if random.random() < AUG_CONTRAST_PROB:
-                c_factor = random.uniform(*AUG_CONTRAST_RANGE)
+            if do_contrast:
                 mean_val = arr.mean()
                 arr = np.clip((arr - mean_val) * c_factor + mean_val, 0.0, 1.0)
 
-            # Gaussian noise
-            noise = np.random.normal(0.0, AUG_NOISE_STD, arr.shape).astype(np.float32)
-            arr = np.clip(arr + noise, 0.0, 1.0)
+            # C. Sensor Noise (Independent per-slice thermal noise)
+            if AUG_NOISE_STD > 0:
+                noise = np.random.normal(0.0, AUG_NOISE_STD, arr.shape).astype(np.float32)
+                arr = np.clip(arr + noise, 0.0, 1.0)
 
-            # Random Erasing / Cutout
-            if random.random() < AUG_ERASING_PROB:
+            # D. Random Cutout (Disabled for disc ROIs to avoid erasing nucleus)
+            if AUG_ERASING_PROB > 0 and random.random() < AUG_ERASING_PROB:
                 h_pix, w_pix = arr.shape
                 area = h_pix * w_pix
                 erase_area = random.uniform(*AUG_ERASING_SCALE) * area
@@ -349,17 +352,28 @@ def create_dataloaders() -> tuple:
 def calculate_class_weights(
     train_dataset: PfirrmannMultiViewDataset,
     device: torch.device,
+    method: str = CLASS_WEIGHT_METHOD,
 ) -> torch.Tensor:
     labels = train_dataset.df["Pfirrmann_Grade"].astype(int).to_numpy()
     indices = np.array([GRADE_TO_LABEL[g] for g in labels], dtype=np.int64)
 
     counts = np.bincount(indices, minlength=NUM_CLASSES)
     total = len(indices)
-    weights = total / (NUM_CLASSES * counts.astype(np.float64))
+
+    if method == "smoothed":
+        # Square-root smoothed inverse frequency: prevents extreme minority weights
+        # from overpowering adjacent ordinal classes. Normalized to mean 1.0.
+        raw = total / (NUM_CLASSES * counts.astype(np.float64))
+        weights = np.sqrt(raw)
+        weights = weights / weights.mean()
+    else:
+        # Standard balanced inverse frequency: N / (C * n_c)
+        weights = total / (NUM_CLASSES * counts.astype(np.float64))
+
     class_weights = torch.tensor(weights, dtype=torch.float32, device=device)
 
     print("\n" + "=" * 65)
-    print("CLASS WEIGHTS (Inverse-Frequency Balanced)")
+    print(f"CLASS WEIGHTS ({method.capitalize()} Inverse-Frequency Balanced)")
     print("=" * 65)
     for grade in range(1, NUM_CLASSES + 1):
         idx = GRADE_TO_LABEL[grade]
@@ -542,11 +556,12 @@ def validate_one_epoch(
 def save_checkpoint(state: dict, is_best: bool, epoch: int) -> None:
     PHASE_CKPT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Per-epoch snapshot
-    epoch_path = PHASE_CKPT_DIR / f"checkpoint_epoch_{epoch:03d}.pt"
-    torch.save(state, epoch_path)
+    # Periodic snapshot (e.g. every 10 epochs or epoch 1) to prevent 19 GB disk bloat
+    if epoch % CHECKPOINT_PERIOD == 0 or epoch == 1:
+        epoch_path = PHASE_CKPT_DIR / f"checkpoint_epoch_{epoch:03d}.pt"
+        torch.save(state, epoch_path)
 
-    # Latest checkpoint (for resume)
+    # Latest checkpoint (for resume) - always saved/overwritten
     torch.save(state, LATEST_CKPT_PATH)
 
     # Best model (by val_macro_f1)
@@ -591,6 +606,7 @@ def main() -> None:
     )
     parser.add_argument("--resume", action="store_true", help="Resume from latest_checkpoint.pt")
     parser.add_argument("--resume_checkpoint", type=str, default="", help="Path to checkpoint")
+    parser.add_argument("--fresh", action="store_true", help="Start fresh from epoch 1, ignoring any existing checkpoints")
     parser.add_argument("--epochs", type=int, default=NUM_EPOCHS, help=f"Total epochs (default {NUM_EPOCHS})")
     args = parser.parse_args()
 
@@ -606,6 +622,7 @@ def main() -> None:
     print(f"  Device           : {device}")
     print(f"  Neck LR          : {LEARNING_RATE_NECK}")
     print(f"  Head LR          : {LEARNING_RATE_HEAD}")
+    print(f"  Weight Decay     : {WEIGHT_DECAY}")
     print(f"  Scheduler        : CosineAnnealingWarmRestarts (T_0={SCHED_T_0}, T_mult={SCHED_T_MULT})")
     print(f"  Loss             : SoftOrdinalFocalLoss (sigma={ORDINAL_SIGMA}, gamma={FOCAL_GAMMA}, aux=0.30)")
     print(f"  Grad clip        : {GRAD_CLIP_MAX_NORM}")
@@ -639,7 +656,9 @@ def main() -> None:
     best_metrics = {"val_accuracy": 0.0, "val_macro_f1": 0.0, "val_mae": 99.0}
 
     # 5. Checkpoint Resume
-    if args.resume_checkpoint:
+    if args.fresh:
+        print("\n[FRESH RUN REQUESTED] Starting fresh from epoch 1 (ignoring existing checkpoints).")
+    elif args.resume_checkpoint:
         ckpt_path = Path(args.resume_checkpoint)
         if not ckpt_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
@@ -677,12 +696,14 @@ def main() -> None:
             model, val_loader, criterion, device, epoch
         )
 
+        # Capture current epoch learning rates BEFORE scheduler step
+        lr_neck = optimizer.param_groups[0]["lr"]
+        lr_head = optimizer.param_groups[1]["lr"]
+
         # Step scheduler
         scheduler.step()
 
         epoch_time = time.time() - epoch_start
-        lr_neck = optimizer.param_groups[0]["lr"]
-        lr_head = optimizer.param_groups[1]["lr"]
 
         # Check if best model
         is_best = val_f1 > best_metrics["val_macro_f1"]

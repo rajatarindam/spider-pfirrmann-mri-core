@@ -61,13 +61,17 @@ class SoftOrdinalFocalLoss(nn.Module):
         self.register_buffer("target_matrix", target_matrix)
 
     def _focal_ordinal_loss(
-        self, logits: torch.Tensor, targets_soft: torch.Tensor
+        self,
+        logits: torch.Tensor,
+        targets_soft: torch.Tensor,
+        labels: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Computes focal-weighted cross-entropy against soft probability targets.
 
         logits:       [B, C]
         targets_soft: [B, C]
+        labels:       [B] Ground-truth class indices for sample-level weighting.
         """
         probs = F.softmax(logits, dim=-1)  # [B, C]
         log_probs = torch.log(probs + self.eps)
@@ -75,15 +79,18 @@ class SoftOrdinalFocalLoss(nn.Module):
         # Focal modulating factor: (1 - p_c)^gamma
         focal_weight = torch.pow(1.0 - probs, self.gamma)  # [B, C]
 
-        # Elementwise loss: (1 - p_c)^gamma * T_c * log(p_c)
+        # Elementwise loss across class distribution: (1 - p_c)^gamma * T_c * log(p_c)
         loss = -focal_weight * targets_soft * log_probs  # [B, C]
 
-        # Class weights
-        if self.class_weights is not None:
-            loss = loss * self.class_weights.unsqueeze(0)
+        # Sum over classes -> loss per sample [B]
+        sample_loss = loss.sum(dim=-1)  # [B]
 
-        # Sum over classes, mean over batch
-        return loss.sum(dim=-1).mean()
+        # Sample-level class weighting: weight each sample by the rarity of its true class
+        if self.class_weights is not None and labels is not None:
+            sample_loss = sample_loss * self.class_weights[labels]
+
+        # Mean over batch
+        return sample_loss.mean()
 
     def forward(
         self,
@@ -104,10 +111,10 @@ class SoftOrdinalFocalLoss(nn.Module):
         # Retrieve soft Gaussian ordinal distribution for batch
         soft_targets = self.target_matrix[labels]  # [B, C]
 
-        primary_loss = self._focal_ordinal_loss(primary_logits, soft_targets)
+        primary_loss = self._focal_ordinal_loss(primary_logits, soft_targets, labels=labels)
 
         if center_logits is not None and self.aux_weight > 0.0:
-            center_loss = self._focal_ordinal_loss(center_logits, soft_targets)
+            center_loss = self._focal_ordinal_loss(center_logits, soft_targets, labels=labels)
             total_loss = primary_loss + self.aux_weight * center_loss
         else:
             center_loss = torch.tensor(0.0, device=primary_logits.device)
