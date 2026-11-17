@@ -15,6 +15,8 @@ from pathlib import Path
 # =============================================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if not (PROJECT_ROOT / "data").exists() and (PROJECT_ROOT.parent / "data").exists():
+    PROJECT_ROOT = PROJECT_ROOT.parent
 
 
 # =============================================================================
@@ -173,6 +175,7 @@ EVALUATION_DIR = PROJECT_ROOT / "evaluation"
 
 UTILITIES_DIR = PROJECT_ROOT / "utilities"
 
+
 # =============================================================================
 # MODEL 5 - MULTI-VIEW PFIRRMANN EXPERIMENT
 # =============================================================================
@@ -197,3 +200,41 @@ MODEL_5_OUTPUTS_DIR = OUTPUTS_DIR / "model_5"
 MODEL_5_CHECKPOINT_DIR = MODEL_5_OUTPUTS_DIR / "checkpoints"
 
 MODEL_5_LOGS_DIR = MODEL_5_OUTPUTS_DIR / "logs"
+
+
+# =============================================================================
+# MODEL 4 - SINGLE-VIEW 2D PFIRRMANN EXPERIMENT
+# =============================================================================
+
+MODEL_4_DATASET_CSV = (
+    NEW_FINAL_DATA_DIR / "dataset_OG.csv"
+)
+
+MODEL_4_IMAGES_DIR = (
+    NEW_FINAL_IMAGES_DIR
+)
+
+MODEL_4_OUTPUTS_DIR = OUTPUTS_DIR / "model_4"
+
+MODEL_4_CHECKPOINT_DIR = MODEL_4_OUTPUTS_DIR / "checkpoints"
+
+MODEL_4_LOGS_DIR = MODEL_4_OUTPUTS_DIR / "logs"
+
+MODEL_4_BEST_MODEL_PATH = MODEL_4_CHECKPOINT_DIR / "best_model.pt"
+
+MODEL_4_LATEST_CHECKPOINT_PATH = MODEL_4_CHECKPOINT_DIR / "latest_checkpoint.pt"
+
+MODEL_4_TRAINING_LOG_PATH = MODEL_4_LOGS_DIR / "training_log.csv"
+
+
+# =============================================================================
+# MODEL 5 - PHASE 3 EXPERIMENT OUTPUTS (ADDITIVE ONLY)
+# =============================================================================
+
+MODEL_5_PHASE3_OUTPUTS_DIR = OUTPUTS_DIR / "model_5_phase3"
+
+MODEL_5_PHASE3_CHECKPOINT_DIR = MODEL_5_PHASE3_OUTPUTS_DIR / "checkpoints"
+
+MODEL_5_PHASE3_LOGS_DIR = MODEL_5_PHASE3_OUTPUTS_DIR / "logs"
+
+MODEL_5_PHASE3_EVALUATION_DIR = MODEL_5_PHASE3_OUTPUTS_DIR / "evaluation"

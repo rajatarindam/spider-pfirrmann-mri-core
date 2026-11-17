@@ -1,3 +1,4 @@
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,7 +31,13 @@ class PfirrmannClassifierV2(nn.Module):
     def __init__(self):
         super().__init__()
 
-        args = parse_args()
+        # Isolate sys.argv so mri_core's internal parse_args() never encounters CLI flags
+        orig_argv = list(sys.argv)
+        sys.argv = [orig_argv[0]]
+        try:
+            args = parse_args()
+        finally:
+            sys.argv = orig_argv
         args.arch = "vit_b"
         args.image_size = 1024
         args.if_encoder_adapter = False
@@ -85,7 +92,11 @@ class PfirrmannClassifierV2(nn.Module):
 
     @torch.no_grad()
     def _load_corrected_positional_embedding(self, checkpoint_path):
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint = torch.load(
+            checkpoint_path,
+            map_location="cpu",
+            weights_only=False,
+        )
 
         if "teacher" in checkpoint:
             state_dict = checkpoint["teacher"]
