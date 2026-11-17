@@ -800,48 +800,8 @@ def run_inference(
         results
     )
 
-    for result, filename in zip(
-        results,
-        filenames,
-    ):
-
-        output_path = (
-            VISUAL_DIR / filename
-        )
-
-        probabilities = [
-            result["Prob_Grade_1"],
-            result["Prob_Grade_2"],
-            result["Prob_Grade_3"],
-            result["Prob_Grade_4"],
-            result["Prob_Grade_5"],
-        ]
-
-        create_prediction_visual(
-            image_path=(
-                PROJECT_ROOT
-                / result["MRI_Output_Path"]
-            ),
-            patient_id=result["Patient_ID"],
-            slice_number=result["Slice_Number"],
-            offset=result["Offset"],
-            medial_slice=result["Medial_Slice_Number"],
-            ivd_label=result["IVD_Label"],
-            gt_grade=result["Pfirrmann_Grade"],
-            predicted_grade=result["Predicted_Grade"],
-            confidence=result["Prediction_Confidence"],
-            gt_probability=result["GT_Grade_Probability"],
-            error_distance=result["Error_Distance"],
-            error_type=result["Prediction_Error_Type"],
-            probabilities=probabilities,
-            output_path=output_path,
-        )
-
-        result["Prediction_Image"] = str(
-            output_path.relative_to(
-                PROJECT_ROOT
-            )
-        ).replace("\\", "/")
+    for result, filename in zip(results, filenames):
+        result["Prediction_Image"] = filename
 
     return pd.DataFrame(results)
 
@@ -2756,14 +2716,6 @@ def main():
     results_df = run_inference(model, test_dataset, test_loader, device)
     validate_results(results_df)
 
-    # Save CSVs
-    results_df.to_csv(prediction_csv, index=False)
-    print(f"\nSaved prediction results:\n  {prediction_csv}")
-
-    summary_df = create_summary(results_df)
-    summary_df.to_csv(summary_csv, index=False)
-    print(f"Saved evaluation summary:\n  {summary_csv}")
-
     # Generate visual montages (731 images)
     if not args.skip_visuals:
         visual_dir.mkdir(parents=True, exist_ok=True)
@@ -2775,7 +2727,8 @@ def main():
 
         for i in tqdm(range(len(results_df)), desc="Saving visual montages"):
             row = results_df.iloc[i]
-            output_image_path = visual_dir / row["Prediction_Image"]
+            filename = row["Prediction_Image"]
+            output_image_path = visual_dir / filename
             image_path = PROJECT_ROOT / row["MRI_Output_Path"]
             probs = [float(row[col]) for col in PROBABILITY_COLUMNS]
 
@@ -2796,8 +2749,22 @@ def main():
                 output_path=output_image_path,
             )
         print(f"Saved {len(results_df)} visual montages in {visual_dir}")
+
+        # Update Prediction_Image column with path relative to project root
+        results_df["Prediction_Image"] = [
+            (visual_dir / fn).relative_to(PROJECT_ROOT).as_posix()
+            for fn in results_df["Prediction_Image"]
+        ]
     else:
         print("\nSkipping individual visual montages as requested (--skip_visuals).")
+
+    # Save CSVs
+    results_df.to_csv(prediction_csv, index=False)
+    print(f"\nSaved prediction results:\n  {prediction_csv}")
+
+    summary_df = create_summary(results_df)
+    summary_df.to_csv(summary_csv, index=False)
+    print(f"Saved evaluation summary:\n  {summary_csv}")
 
     # Generate 31 core evaluation figures & CSVs in results/r
     run_core_evaluation_report(results_df, r_dir)
