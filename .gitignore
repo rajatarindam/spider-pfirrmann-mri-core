@@ -78,3 +78,26 @@ CODING_GUIDELINES.md
 DEVELOPMENT_LOG.md
 PROJECT_CONTEXT.md
 design_decisions.md
+# ============================================================
+# Local Legacy & Experimental Files (Excluded from GitHub)
+# ============================================================
+eda/
+preprocessing/
+utilities/
+configs/preprocessing.py
+configs/training_config.py
+configs/training_config_new_final.py
+configs/training_config_new_final_patient_stratified.py
+training/dataset.py
+training/dataset_new_final.py
+training/dataset_new_final_patient_stratified.py
+training/train.py
+training/train_new_final.py
+training/train_new_final_patient_stratified.py
+training/train_classifier_v6.py
+training/test_dataset.py
+training/test_model.py
+training/test_mri_core.py
+training/models/pfirrmann_classifier.py
+training/models/pfirrmann_classifier_v4.py
+test_preflight_model_4.py
