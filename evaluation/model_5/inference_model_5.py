@@ -8,7 +8,7 @@ Features:
     - Runs full test-set inference on PfirrmannClassifierV5 (frozen ViT-B backbone,
       SAM neck, spatial attention pooling, and view attention aggregator).
     - Checkpoint Flexibility:
-        * Defaults to 'best_model.pt' in outputs/model_5/checkpoints/ (or candidate dirs).
+        * Defaults to 'best_model.pt' in outputs/model_5/phase1_2/checkpoints/ (or candidate dirs).
         * Can be switched to 'latest_checkpoint.pt' or any custom path via --checkpoint.
     - Default Batch Size: 1 (--batch_size 1) for strict memory stability.
     - Headless Matplotlib Backend: 'Agg' enabled for zero-display server execution.
@@ -124,17 +124,24 @@ def resolve_checkpoint_path(checkpoint_arg: str = None) -> Path:
         p = Path(checkpoint_arg)
         if p.exists():
             return p
-        cand = PROJECT_ROOT / "outputs" / "model_5" / "checkpoints" / checkpoint_arg
-        if cand.exists():
-            return cand
-        cand2 = PROJECT_ROOT / checkpoint_arg
-        if cand2.exists():
-            return cand2
+        candidates = [
+            PROJECT_ROOT / "outputs" / "model_5" / "phase1_2" / "checkpoints" / checkpoint_arg,
+            PROJECT_ROOT / "outputs" / "model_5" / "checkpoints" / checkpoint_arg,
+            PROJECT_ROOT / checkpoint_arg,
+            Path("/home/arindam/spider-pfirrmann-mri-core/outputs/model_5/phase1_2/checkpoints") / checkpoint_arg,
+        ]
+        for cand in candidates:
+            if cand.exists():
+                return cand
         raise FileNotFoundError(f"Specified checkpoint not found: {checkpoint_arg}")
 
     default_paths = [
+        PROJECT_ROOT / "outputs" / "model_5" / "phase1_2" / "checkpoints" / "best_model.pt",
+        Path("/home/arindam/spider-pfirrmann-mri-core/outputs/model_5/phase1_2/checkpoints/best_model.pt"),
         PROJECT_ROOT / "outputs" / "model_5" / "checkpoints" / "best_model.pt",
+        PROJECT_ROOT / "context" / "outputs" / "model_5" / "phase1_2" / "checkpoints" / "best_model.pt",
         PROJECT_ROOT / "context" / "outputs" / "model_5" / "checkpoints" / "best_model.pt",
+        _SCRIPT_DIR.parent.parent / "outputs" / "model_5" / "phase1_2" / "checkpoints" / "best_model.pt",
         _SCRIPT_DIR.parent.parent / "outputs" / "model_5" / "checkpoints" / "best_model.pt",
         Path("D:/BAAA project/spider-pfirrmann-mri-core/outputs/model_5/checkpoints/best_model.pt"),
     ]
@@ -142,7 +149,7 @@ def resolve_checkpoint_path(checkpoint_arg: str = None) -> Path:
         if p.exists():
             return p
 
-    return PROJECT_ROOT / "outputs" / "model_5" / "checkpoints" / "best_model.pt"
+    return PROJECT_ROOT / "outputs" / "model_5" / "phase1_2" / "checkpoints" / "best_model.pt"
 
 
 # =============================================================================
